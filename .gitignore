@@ -1,0 +1,10 @@
+# Reports, logs and exports produced by the scripts: never commit these
+*.csv
+!data/hr-export-sample.csv
+ca-backup/
+exports/
+test-results.xml
+
+# Editors
+.vscode/
+.idea/

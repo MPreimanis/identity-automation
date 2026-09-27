@@ -1,0 +1,11 @@
+GivenName,Surname,Company,Department,JobTitle,Country,UsageLocation,EmployeeId,ManagerUpn,Groups
+Anna,Ozola,Echoo Group,Service,BMS Technician,Latvia,LV,EG-1042,,SG-Echoo-All
+Jānis,Bērziņš,Echoo Group,Engineering,Automation Engineer,Latvia,LV,EG-1043,,SG-Echoo-All
+Līga,Kalniņa,Echoo Group,Finance,Accountant,Latvia,LV,EG-1044,,SG-Echoo-All
+Erik,Lindqvist,Nordomatic AB,IT,IT Manager,Sweden,SE,NO-2001,,SG-Group-IT
+Sofia,Nyberg,Nordomatic AB,Service,Service Manager,Sweden,SE,NO-2002,,SG-Group-All
+Maja,Holm,Nordomatic AB,Sales,Account Manager,Sweden,SE,NO-2003,,SG-Group-All
+Daniel,Reed,Conexus Inc,Service,Controls Technician,United States,US,CX-3001,,SG-Conexus-All
+Olivia,Grant,Conexus Inc,Engineering,Project Engineer,United States,US,CX-3002,,SG-Conexus-All
+Priya,Nair,Nordomatic India,Engineering,BMS Developer,India,IN,IN-4001,,SG-Group-All
+Tom,Baker,Nordomatic UK,Service,Field Engineer,United Kingdom,GB,UK-5001,,SG-Group-All

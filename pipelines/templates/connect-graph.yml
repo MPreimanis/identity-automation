@@ -1,0 +1,26 @@
+parameters:
+  - name: serviceConnection
+    type: string
+  - name: graphModules
+    type: string
+    default: 'Microsoft.Graph.Users'
+
+steps:
+  - task: AzureCLI@2
+    displayName: Get a Microsoft Graph token
+    inputs:
+      azureSubscription: ${{ parameters.serviceConnection }}
+      scriptType: pscore
+      scriptLocation: inlineScript
+      inlineScript: |
+        $token = az account get-access-token --resource https://graph.microsoft.com --query accessToken --output tsv
+        if (-not $token) { throw 'No token returned' }
+        Write-Host "##vso[task.setvariable variable=GraphToken;issecret=true]$token"
+
+  - pwsh: |
+      Install-Module Microsoft.Graph.Authentication -Scope CurrentUser -Force
+      $version = (Get-Module Microsoft.Graph.Authentication -ListAvailable | Sort-Object Version -Descending | Select-Object -First 1).Version
+      foreach ($name in '${{ parameters.graphModules }}' -split ',') {
+          Install-Module $name.Trim() -RequiredVersion $version -Scope CurrentUser -Force
+      }
+    displayName: Install Graph modules

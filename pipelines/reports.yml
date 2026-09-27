@@ -1,0 +1,54 @@
+trigger: none
+
+schedules:
+  - cron: '0 5 * * 1'            # Mondays 05:00 UTC, which is 08:00 in Riga in summer and 07:00 in winter
+    displayName: Weekly identity reports
+    branches:
+      include:
+        - main
+    always: true                 # run even if nothing changed in the repo
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  reportDir: $(Build.ArtifactStagingDirectory)/reports
+
+steps:
+  - task: AzureCLI@2
+    displayName: Get a Microsoft Graph token (federated, no secret)
+    inputs:
+      azureSubscription: sc-idauto-read
+      scriptType: pscore
+      scriptLocation: inlineScript
+      inlineScript: |
+        $token = az account get-access-token --resource https://graph.microsoft.com --query accessToken --output tsv
+        if (-not $token) { throw 'No token returned' }
+        Write-Host "##vso[task.setvariable variable=GraphToken;issecret=true]$token"
+
+  - pwsh: |
+      Install-Module Microsoft.Graph.Authentication -Scope CurrentUser -Force
+      $version = (Get-Module Microsoft.Graph.Authentication -ListAvailable | Sort-Object Version -Descending | Select-Object -First 1).Version
+      foreach ($name in 'Microsoft.Graph.Users', 'Microsoft.Graph.Reports', 'Microsoft.Graph.Identity.Governance', 'Microsoft.Graph.Applications') {
+          Install-Module $name -RequiredVersion $version -Scope CurrentUser -Force
+      }
+    displayName: Install Graph modules with matching versions
+
+  - pwsh: |
+      Connect-MgGraph -AccessToken (ConvertTo-SecureString $env:GRAPH_TOKEN -AsPlainText -Force) -NoWelcome
+      New-Item -ItemType Directory -Path '$(reportDir)' -Force | Out-Null
+
+      ./src/Get-InactiveUsers.ps1 -Days 90 -OutFile '$(reportDir)/inactive-users.csv'
+      ./src/Get-AuthMethodsReport.ps1 -OutFile '$(reportDir)/auth-methods.csv'
+      ./src/Get-PrivilegedRoles.ps1 -OutFile '$(reportDir)/privileged-roles.csv'
+      ./src/Get-ExpiringAppCredentials.ps1 -Days 45
+    displayName: Run reports
+    env:
+      GRAPH_TOKEN: $(GraphToken)
+
+  - task: PublishPipelineArtifact@1
+    displayName: Publish reports
+    condition: succeededOrFailed()
+    inputs:
+      targetPath: $(reportDir)
+      artifact: identity-reports

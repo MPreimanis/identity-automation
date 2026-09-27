@@ -1,0 +1,48 @@
+trigger: none
+
+schedules:
+  - cron: '30 1 * * *'           # every night at 01:30 UTC
+    displayName: Nightly Conditional Access export
+    branches:
+      include:
+        - main
+    always: true
+
+pool:
+  vmImage: ubuntu-latest
+
+steps:
+  - checkout: self
+    persistCredentials: true     # lets later git commands push with the pipeline's identity
+    fetchDepth: 0
+
+  - template: templates/connect-graph.yml
+    parameters:
+      serviceConnection: sc-idauto-read
+
+  - pwsh: |
+      Connect-MgGraph -AccessToken (ConvertTo-SecureString $env:GRAPH_TOKEN -AsPlainText -Force) -NoWelcome
+      . ./src/CaPolicyBackup.ps1                 # load the export function before switching branches
+
+      git config user.email 'ca-export@pipeline.local'
+      git config user.name 'CA export pipeline'
+      git fetch origin exports
+      git checkout -B exports origin/exports     # create the exports branch from main once, by hand
+
+      $path = './exports/conditional-access'
+      Remove-Item -Path $path -Recurse -Force -ErrorAction SilentlyContinue   # so deleted or renamed policies show up
+      Export-CaPolicy -Path $path
+
+      git add --all ./exports
+      if (git status --porcelain) {
+          git commit -m "Conditional Access export $(Get-Date -Format 'yyyy-MM-dd') [skip ci]"
+          git push origin exports
+          Write-Host '##vso[task.logissue type=warning]Conditional Access changed since the last export. Review the commit.'
+          Write-Host '##vso[task.complete result=SucceededWithIssues;]'
+      }
+      else {
+          Write-Host 'No changes since the last export'
+      }
+    displayName: Export and commit changes
+    env:
+      GRAPH_TOKEN: $(GraphToken)
