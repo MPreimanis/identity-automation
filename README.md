@@ -1,10 +1,10 @@
 # identity-automation
 
-[![ci](https://github.com/<your-username>/identity-automation/actions/workflows/ci.yml/badge.svg)](https://github.com/<your-username>/identity-automation/actions/workflows/ci.yml)
+[![ci](https://github.com/MPreimanis/identity-automation/actions/workflows/ci.yml/badge.svg)](https://github.com/MPreimanis/identity-automation/actions/workflows/ci.yml)
 
-PowerShell scripts for day-to-day identity work in Microsoft Entra ID: access reports, joiners and leavers, and Conditional Access backups. They use the Microsoft Graph PowerShell SDK and run from a workstation or from Azure Pipelines. In the pipelines they sign in with workload identity federation, so there is no secret to store, leak or rotate.
+PowerShell scripts for everyday Entra ID admin work: finding inactive accounts, reporting on MFA registration and privileged roles, backing up Conditional Access policies, and handling joiners and leavers. They use the Microsoft Graph PowerShell SDK. You can run them by hand or from Azure Pipelines, where they sign in through workload identity federation instead of a stored client secret.
 
-Everything was built and tested in a lab tenant. The repository contains no data from a real organisation.
+They're written for a lab or test tenant. There's no real company data in here.
 
 ## Scripts
 
@@ -20,9 +20,9 @@ Everything was built and tested in a lab tenant. The repository contains no data
 | `Invoke-Joiner.ps1` | Creates or updates cloud-only users from an HR export | User.ReadWrite.All, GroupMember.ReadWrite.All, UserAuthenticationMethod.ReadWrite.All |
 | `Invoke-Leaver.ps1` | Disables a user, revokes sessions, removes cloud group memberships and logs each step | User.ReadWrite.All, GroupMember.ReadWrite.All |
 
-Sign-in activity and authentication method reports need Entra ID P1 or P2. Eligible role assignments need P2.
+The sign-in activity and authentication method reports need Entra ID P1 or P2. Eligible (PIM) role assignments need P2.
 
-## Quick start
+## Trying it out
 
 Use a lab tenant, not your employer's.
 
@@ -49,8 +49,8 @@ flowchart LR
     E --> F[CSV reports as pipeline artifacts]
 ```
 
-1. Create an app registration for the read-only jobs and grant it these Microsoft Graph application permissions, with admin consent: User.Read.All, AuditLog.Read.All, RoleManagement.Read.Directory, Application.Read.All and Policy.Read.All.
-2. In Azure DevOps, create an Azure Resource Manager service connection named `sc-idauto-read` that uses workload identity federation with that app, scoped to an empty resource group. The Azure scope doesn't limit Graph: the app's Graph permissions apply to the whole tenant.
+1. Create an app registration for the read-only jobs and give it these Microsoft Graph application permissions (with admin consent): User.Read.All, AuditLog.Read.All, RoleManagement.Read.Directory, Application.Read.All and Policy.Read.All.
+2. In Azure DevOps, add an Azure Resource Manager service connection called `sc-idauto-read` that uses workload identity federation with that app, scoped to an empty resource group. The Azure scope doesn't restrict Graph. The app's Graph permissions cover the whole tenant.
 3. Add the pipelines:
 
 | Pipeline | When | What it does |
@@ -59,23 +59,23 @@ flowchart LR
 | `pipelines/reports.yml` | Mondays at 05:00 UTC | Runs the reports and publishes the CSV files as an artifact |
 | `pipelines/ca-export.yml` | Nightly | Exports Conditional Access policies and commits any change to an `exports` branch |
 
-When the code lives on GitHub, Azure Pipelines builds pull requests automatically. In Azure Repos, add a build validation branch policy on `main` instead.
+If the code is on GitHub, Azure Pipelines builds pull requests on its own. In Azure Repos you need a build validation branch policy on `main`.
 
-Keep `ca-export.yml` pointed at a private repository. Exported policies contain object IDs from your tenant. Before its first run, create the `exports` branch from `main` and give the project's Build Service identity Contribute permission on the repository.
+Point `ca-export.yml` at a private repository, because the exported policies contain object IDs from your tenant. Before the first run, create an `exports` branch from `main` and give the project's Build Service identity Contribute permission on the repo.
 
-## Design decisions
+## Why it's built this way
 
-- Pipelines authenticate with workload identity federation. Jobs that run on Azure resources would use a managed identity. Neither needs a secret.
-- Reading and writing use different identities. The reports run with read-only permissions; anything that changes the tenant belongs behind a separate service connection with approvals.
-- Every change goes through `ShouldProcess`, so `-WhatIf` shows exactly what a run would do.
-- Runs are safe to repeat. The joiner matches people on `employeeId`, because names and UPNs change, and it only changes what differs.
-- Synced users are disabled in Active Directory. A cloud-only change would be overwritten by the next sync, so the leaver script reports that step instead of pretending to do it.
-- CI installs exact versions of Pester and PSScriptAnalyzer, so a new release can't break the build overnight.
-- The nightly export turns Conditional Access drift into a Git diff: a change made in the portal shows up in the commit history the next morning.
+- The pipelines use workload identity federation. Anything running on an Azure resource would use a managed identity instead. Either way there's no secret to look after.
+- Reports and changes use separate identities. The reports only get read permissions. Anything that writes to the tenant should go through its own service connection with approvals.
+- Every change goes through `ShouldProcess`, so `-WhatIf` shows what a run would do before it does it.
+- Re-running is safe. The joiner matches people on `employeeId` (names and UPNs change) and only touches what's different.
+- Synced users have to be disabled in Active Directory, since a cloud-only change gets undone by the next sync. The leaver script flags that step for you instead of skipping it quietly.
+- CI pins Pester and PSScriptAnalyzer to exact versions, so a new release can't suddenly break the build.
+- The nightly export commits the Conditional Access policies as JSON. If someone changes a policy in the portal, it shows up as a diff the next morning.
 
 ## Tests
 
-GitHub Actions runs PSScriptAnalyzer on `src/` and the Pester tests in `tests/` on pushes to `main` and on pull requests. The tests check that every script parses, requires PowerShell 7.2 or later, documents its Graph permissions and contains no hard-coded secrets or object IDs. Unit tests cover the joiner's helpers: turning Latvian names such as "Bērziņš" into clean UPNs, generating passwords without easily confused characters, and retrying calls while new objects replicate.
+GitHub Actions runs PSScriptAnalyzer on `src/` and the Pester tests in `tests/` on pushes to `main` and on pull requests. The tests check that each script parses, requires PowerShell 7.2 or later, lists the Graph permissions it needs and has no hard-coded secrets or object IDs. There are also unit tests for the joiner's helper functions, such as turning Latvian names like "Bērziņš" into clean UPNs and generating passwords without look-alike characters.
 
 ```powershell
 Invoke-Pester ./tests
@@ -84,9 +84,9 @@ Invoke-ScriptAnalyzer -Path ./src -Recurse -Settings ./PSScriptAnalyzerSettings.
 
 ## Notes
 
-- `Invoke-Joiner.ps1 -IssueTap` prints the Temporary Access Pass to the console. That is for a lab. In production the pass goes to the manager through a secure channel.
-- In a hybrid environment, joiners are created in Active Directory and reach Entra ID through sync. The joiner here is for cloud-only users.
-- `.gitignore` excludes CSV files except the sample, so reports and HR exports don't end up in Git by accident.
+- `Invoke-Joiner.ps1 -IssueTap` prints the Temporary Access Pass to the console. That's fine in a lab. In production it should reach the manager some other way.
+- In a hybrid setup, joiners are created in AD and synced up. The joiner script here is for cloud-only users.
+- `.gitignore` excludes CSV files apart from the sample, so reports and HR exports don't get committed by accident.
 
 ## Licence
 
